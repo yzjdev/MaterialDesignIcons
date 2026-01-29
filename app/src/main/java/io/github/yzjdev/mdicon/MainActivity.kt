@@ -3,6 +3,10 @@ package io.github.yzjdev.mdicon
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.drawable.PictureDrawable
 import android.os.Bundle
 import android.os.Message
 import android.text.TextUtils
@@ -12,27 +16,39 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
+import androidx.core.graphics.createBitmap
 import androidx.core.view.ViewCompat
+import androidx.core.view.ViewCompat.setLayerType
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.caverock.androidsvg.SVG
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import com.hjq.permissions.XXPermissions
+import com.hjq.permissions.permission.PermissionLists
 import io.github.yzjdev.mdicon.databinding.ActivityMainBinding
 import io.github.yzjdev.mdicon.databinding.ItemIconBinding
+import io.github.yzjdev.mdicon.databinding.TestBinding
+import io.github.yzjdev.svg2vector.Vector2Svg
+
 import net.lingala.zip4j.ZipFile
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -55,8 +71,6 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 MSG_DISMISS_PROGRESS -> {
-                    updateEmptyState()
-                    setupRecyclerView()
                     if (progressDialog.isShowing) progressDialog.dismiss()
                 }
             }
@@ -81,6 +95,11 @@ class MainActivity : AppCompatActivity() {
     lateinit var searchView: SearchView
     private var selectedFamily = 0
     private var selectedCategory = 0
+
+    val searchExecutor = Executors.newSingleThreadExecutor()
+    var isWorking = false
+
+    @OptIn(ExperimentalAtomicApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -93,13 +112,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         setSupportActionBar(binding.toolbar)
+
         updateEmptyState()
+        XXPermissions.with(this).permission(PermissionLists.getManageExternalStoragePermission())
+            .request(null)
         if (!iconsMetadataFile.exists()) {
             createProgressDialog()
             unzipExecutor.execute {
-                uiHandler.sendEmptyMessage(MSG_SHOW_PROGRESS)
-                unzip()
-                uiHandler.sendEmptyMessage(MSG_DISMISS_PROGRESS)
+                isWorking = true
+                var ok = false
+                try {
+                    uiHandler.sendEmptyMessage(MSG_SHOW_PROGRESS)
+                    unzip()
+                    ok = true
+                } catch (e: Exception) {
+                } finally {
+                    isWorking = false
+                    uiHandler.sendEmptyMessage(MSG_DISMISS_PROGRESS)
+                    if (ok) {
+                        uiHandler.post {
+                            updateEmptyState()
+                            setupRecyclerView()
+                        }
+                    }
+                }
             }
             return
         }
@@ -157,42 +193,53 @@ class MainActivity : AppCompatActivity() {
 
 
     fun filter() {
-        val searchText = searchView.query.toString().trim().lowercase()
-        val family = iconsMetadata.families[selectedFamily]
-        val category = iconsMetadata.categories[selectedCategory]
-        val isSearchEmpty = TextUtils.isEmpty(searchText)
-        val isAllFamily = "all" == family
-        val isAllCategory = "all" == category
-        val list = iconsMetadata.icons.filter { icon ->
-            if (!isAllFamily) {
-                if (icon.unsupportedFamilies.contains(family)) {
-                    return@filter false
-                }
-            }
-
-            if (!isAllCategory) {
-                if (!icon.categories.contains(category)) return@filter false
-            }
-
-            if (!isSearchEmpty) {
-                val nameMatch = icon.name.lowercase().contains(searchText)
-                var tagsMatch = false
-                if (!nameMatch) {
-                    for (tag in icon.tags) {
-                        if (tag.lowercase().contains(searchText)) {
-                            tagsMatch = true
-                            break
-                        }
+        searchExecutor.execute {
+            val searchText = searchView.query.toString().trim().lowercase()
+            val family = iconsMetadata.families[selectedFamily]
+            val category = iconsMetadata.categories[selectedCategory]
+            val isSearchEmpty = TextUtils.isEmpty(searchText)
+            val isAllFamily = "all" == family
+            val isAllCategory = "all" == category
+            val list = iconsMetadata.icons.filter { icon ->
+                if (!isAllFamily) {
+                    if (icon.unsupportedFamilies.contains(family)) {
+                        return@filter false
                     }
                 }
 
-                if (!nameMatch && !tagsMatch) return@filter false
+                if (!isAllCategory) {
+                    if (!icon.categories.contains(category)) return@filter false
+                }
+
+                if (!isSearchEmpty) {
+                    val nameMatch = icon.name.lowercase().contains(searchText)
+                    var tagsMatch = false
+                    if (!nameMatch) {
+                        for (tag in icon.tags) {
+                            if (tag.lowercase().contains(searchText)) {
+                                tagsMatch = true
+                                break
+                            }
+                        }
+                    }
+
+                    if (!nameMatch && !tagsMatch) return@filter false
+                }
+                return@filter true
             }
-            return@filter true
+            uiHandler.post {
+                adapter.updateItems(list)
+                binding.toolbar.subtitle = "${list.size}"
+            }
         }
-        adapter.updateItems(list)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        uiHandler.removeCallbacksAndMessages(null)
+        unzipExecutor.shutdownNow()
+        searchExecutor.shutdownNow()
+    }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
@@ -214,8 +261,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.action_help -> {
+                val file = File(
+                    getExternalFilesDir(null),
+                    "icons/material/materialiconstwotone/10k/twotone_10k_24.xml"
+                )
+
+                val testFilePath = "/storage/emulated/0/Download/test.xml"
+                val b = TestBinding.inflate(LayoutInflater.from(this), null, false)
+                b.icon.loadVectorDrawable(File(testFilePath))
+                MaterialAlertDialogBuilder(this).apply {
+                    setView(b.root)
+                    show()
+                }
+            }
+        }
         return super.onOptionsItemSelected(item)
     }
+
 
     fun createProgressDialog() {
         MaterialAlertDialogBuilder(this).apply {
@@ -259,9 +323,9 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
             val iconPath = item.getIconPath(storeDir, iconsMetadata.families[selectedFamily])
-
+            val file = File(iconPath)
             holder.binding.name.text = item.name
-            holder.binding.icon.loadVectorDrawable(iconPath)
+            holder.binding.icon.loadVectorDrawable(file)
 
             holder.itemView.setOnClickListener { v ->
 
@@ -294,22 +358,23 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         "导出为XML" -> {
-                            copyText = File(iconPath).readText()
-                            builder.setMessage(copyText)
-
-                            builder.show()
+                            file.copyTo(File(getExternalFilesDir(null), file.name), true)
                         }
 
                         "导出为SVG" -> {
-                            val converter = Vd2SvgConverter()
-                            copyText = converter.convert(File(iconPath))
-                            builder.setMessage(copyText)
-                            builder.show()
+                            val str = Vector2Svg.parseXmlToSvg(FileInputStream(file))
+                            str.log()
+//                           Vector2Svg.parseXmlToSvg(
+//                                FileInputStream(file), FileOutputStream(
+//                                    File(
+//                                        getExternalFilesDir(null), "${item.name}.svg"
+//                                    )
+//                                )
+//                            )
                         }
 
                         "导出为PNG" -> {}
                         "编辑" -> {
-
                         }
                     }
                     true

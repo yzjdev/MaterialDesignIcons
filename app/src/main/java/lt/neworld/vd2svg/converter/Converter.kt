@@ -58,6 +58,7 @@ class Converter(val colors: ResourceCollector) {
             attributes.rename(ANDROID_NS, "viewportHeight", SVG_NS, "height")
             attributes.rename(ANDROID_NS, "viewportWidth", SVG_NS, "width")
 
+
             rename("svg", SVG_NS)
         }
 

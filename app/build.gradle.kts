@@ -50,6 +50,14 @@ android {
 }
 
 dependencies {
+
+    // 设备兼容框架：https://github.com/getActivity/DeviceCompat
+    implementation("com.github.getActivity:DeviceCompat:2.3")
+// 权限请求框架：https://github.com/getActivity/XXPermissions
+    implementation("com.github.getActivity:XXPermissions:28.0")
+
+
+    implementation(project(":svg2vector"))
 // Source: https://mvnrepository.com/artifact/com.caverock/androidsvg
     implementation("com.caverock:androidsvg:1.4")
     // Source: https://mvnrepository.com/artifact/net.lingala.zip4j/zip4j
