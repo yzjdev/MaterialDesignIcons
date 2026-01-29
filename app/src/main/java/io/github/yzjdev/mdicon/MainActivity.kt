@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
 
                 MSG_DISMISS_PROGRESS -> {
                     updateEmptyState()
+                    setupRecyclerView()
                     if (progressDialog.isShowing) progressDialog.dismiss()
                 }
             }
@@ -103,16 +104,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+
+        setupRecyclerView()
+    }
+
+    fun setupRecyclerView() {
         val gson = Gson()
         val json = readString(iconsMetadataFile)
         iconsMetadata = gson.fromJson(json, IconsMetadata::class.java)
         filteredIcons = ArrayList(iconsMetadata.icons)
         setupSpinner()
         setupSpinner2()
-        setupRecyclerView()
-    }
 
-    fun setupRecyclerView() {
+
         adapter = IconAdapter(filteredIcons)
         binding.rv.layoutManager = GridLayoutManager(this, 4)
         binding.rv.adapter = adapter
@@ -231,6 +235,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         ZipFile(zipFile).extractAll(storeDir.absolutePath)
+        zipFile.delete()
     }
 
 
