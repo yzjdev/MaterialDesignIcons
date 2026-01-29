@@ -1,17 +1,18 @@
 package io.github.yzjdev.mdicon
 
-import android.content.Intent
-import android.graphics.drawable.PictureDrawable
+import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
 import android.os.Message
 import android.text.TextUtils
-import android.util.Log.v
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -21,7 +22,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.caverock.androidsvg.SVG
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -240,6 +240,8 @@ class MainActivity : AppCompatActivity() {
         binding.mainContainer.visibility = if (empty) View.GONE else View.VISIBLE
     }
 
+    var copyText = ""
+
     inner class IconAdapter(val items: MutableList<Icon> = ArrayList()) :
         RecyclerView.Adapter<ViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -248,6 +250,7 @@ class MainActivity : AppCompatActivity() {
             return ViewHolder(binding)
         }
 
+        @SuppressLint("ServiceCast")
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
             val iconPath = item.getIconPath(storeDir, iconsMetadata.families[selectedFamily])
@@ -269,6 +272,14 @@ class MainActivity : AppCompatActivity() {
                 popupMenu.menu.add(0, 5, 0, "编辑").setIcon(R.drawable.outline_edit_24)
 
                 val builder = MaterialAlertDialogBuilder(this@MainActivity)
+                builder.setTitle("提示")
+                builder.setPositiveButton("复制") { d, w ->
+                    val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("", copyText)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(this@MainActivity, "已复制", Toast.LENGTH_SHORT).show()
+
+                }
                 // 处理菜单项点击
                 popupMenu.setOnMenuItemClickListener { menuItem ->
                     val title = menuItem.title
@@ -278,14 +289,16 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         "导出为XML" -> {
-                            builder.setMessage(File(iconPath).readText())
+                            copyText = File(iconPath).readText()
+                            builder.setMessage(copyText)
+
                             builder.show()
                         }
 
                         "导出为SVG" -> {
                             val converter = Vd2SvgConverter()
-                            val str = converter.convert(File(iconPath))
-                            builder.setMessage(str)
+                            copyText = converter.convert(File(iconPath))
+                            builder.setMessage(copyText)
                             builder.show()
                         }
 
