@@ -50,6 +50,10 @@ android {
 }
 
 dependencies {
+	implementation(project(":utils"))
+
+	// 颜色选择控件
+	api("net.margaritov.preference.colorpicker.ColorPickerPreference:ColorPickerPreference:1.0.0")
 
     // 设备兼容框架：https://github.com/getActivity/DeviceCompat
     implementation("com.github.getActivity:DeviceCompat:2.3")
@@ -57,8 +61,7 @@ dependencies {
     implementation("com.github.getActivity:XXPermissions:28.0")
 
 
-    implementation(project(":svg2vector"))
-// Source: https://mvnrepository.com/artifact/com.caverock/androidsvg
+    // Source: https://mvnrepository.com/artifact/com.caverock/androidsvg
     implementation("com.caverock:androidsvg:1.4")
     // Source: https://mvnrepository.com/artifact/net.lingala.zip4j/zip4j
     implementation("net.lingala.zip4j:zip4j:2.11.5")
