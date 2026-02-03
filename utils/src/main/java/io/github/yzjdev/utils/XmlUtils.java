@@ -15,6 +15,7 @@ import org.w3c.dom.NodeList;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.StringWriter;
 
@@ -27,12 +28,6 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
 public final class XmlUtils {
-
-    public static final String NS_ANDROID = "http://schemas.android.com/apk/res/android";
-    public static final String NS_APP = "http://schemas.android.com/apk/res-auto";
-    public static final String NS_TOOLS = "http://schemas.android.com/tools";
-    public static final String NS_SVG = "http://www.w3.org/2000/svg";
-
     private XmlUtils() {
     }
 
@@ -44,7 +39,6 @@ public final class XmlUtils {
 
     public static String toString(Document doc) {
         try {
-            // output
             Transformer transformer = TransformerFactory.newInstance().newTransformer();
             transformer.setOutputProperty(OutputKeys.INDENT, "yes");
             transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
@@ -79,12 +73,17 @@ public final class XmlUtils {
         return toString(vdDoc);
     }
 
-    public static String change(String vectorString, String w, String h, String color, String alpha) throws Exception {
-        return change(new ByteArrayInputStream(vectorString.getBytes()), w, h, color, alpha);
+
+    public static String changeFromString(String vectorString, String color, String alpha) throws Exception {
+        return change(new ByteArrayInputStream(vectorString.getBytes()), color, alpha);
     }
 
-    public static String change(String vectorString, String color, String alpha) throws Exception {
-        return change(new ByteArrayInputStream(vectorString.getBytes()), color, alpha);
+    public static String change(String vectorFilePath, String color, String alpha) throws Exception {
+        return change(new File(vectorFilePath), color, alpha);
+    }
+
+    public static String change(File in, String color, String alpha) throws Exception {
+        return change(new FileInputStream(in), color, alpha);
     }
 
     public static String change(InputStream in, String color, String alpha) throws Exception {
@@ -95,6 +94,14 @@ public final class XmlUtils {
         vdRoot.setAttribute("android:tint", color);
         vdRoot.setAttribute("android:alpha", alpha);
         return toString(vdDoc);
+    }
+
+    public static String changeFromString(String vectorString, String w, String h, String color, String alpha) throws Exception {
+        return change(new ByteArrayInputStream(vectorString.getBytes()), w, h, color, alpha);
+    }
+
+    public static String change(String vectorFilePath, String w, String h, String color, String alpha) throws Exception {
+        return change(new File(vectorFilePath), w, h, color, alpha);
     }
 
     public static String change(File in, String w, String h, String color, String alpha) throws Exception {
@@ -113,15 +120,19 @@ public final class XmlUtils {
         return toString(vdDoc);
     }
 
-    public static String vd2svg(String vectorString) throws Exception {
+    public static String vd2svgFromString(String vectorString) throws Exception {
         return vd2svg(new ByteArrayInputStream(vectorString.getBytes()));
+    }
+
+    public static String vd2svg(String vectorFilePath) throws Exception {
+        return vd2svg(new File(vectorFilePath));
     }
 
     public static String vd2svg(File vdFile) throws Exception {
         return vd2svg(new FileInputStream(vdFile));
     }
 
-    public static String vd2svg(InputStream vdInputStream) throws Exception {
+    public static String vd2svg(InputStream in) throws Exception {
         DocumentBuilder builder = createBuilder();
         // SVG document
         Document svgDoc = builder.newDocument();
@@ -130,7 +141,7 @@ public final class XmlUtils {
         svgDoc.appendChild(svgRoot);
 
         // VectorDrawable document
-        Document vdDoc = builder.parse(vdInputStream);
+        Document vdDoc = builder.parse(in);
         Element vdRoot = vdDoc.getDocumentElement();
 
         // width
@@ -218,9 +229,10 @@ public final class XmlUtils {
 	 String svgStr = vd2svg(new File(vdPath));
 	 */
 
-    public static void into(ImageView iv, File vectorFile) {
+
+    public static void intoFromString(ImageView iv, String vectorString) {
         try {
-            SVG svg = SVG.getFromString(vd2svg(vectorFile));
+            SVG svg = SVG.getFromString(vd2svgFromString(vectorString));
             Drawable d = new PictureDrawable(svg.renderToPicture());
             iv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             iv.setImageDrawable(d);
@@ -229,14 +241,27 @@ public final class XmlUtils {
         }
     }
 
-    public static void into(ImageView iv, String vectorString) {
+    public static void intoFromPath(ImageView iv, String vectorPath) {
+        into(iv, new File(vectorPath));
+    }
+
+    public static void into(ImageView iv, File vectorFile) {
         try {
-            SVG svg = SVG.getFromString(vd2svg(new ByteArrayInputStream(vectorString.getBytes())));
+            into(iv, new FileInputStream(vectorFile));
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    public static void into(ImageView iv, InputStream in) {
+        try {
+            SVG svg = SVG.getFromString(vd2svg(in));
             Drawable d = new PictureDrawable(svg.renderToPicture());
             iv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             iv.setImageDrawable(d);
         } catch (Exception e) {
-            e.printStackTrace();
+
         }
     }
 }

@@ -15,6 +15,16 @@ data class Icon(
 	val categories: List<String>,
 	val tags: List<String>
 ) {
+
+	fun getName(family: String): String {
+		val prefix = when {
+			family == "Material Icons" -> "baseline"
+			family.endsWith("Outlined") -> "outline"
+			else -> family.replace("Material Icons", "").replace(" ", "").trim().lowercase()
+		}
+
+		return "${prefix}_${name}_24"
+	}
 	fun getIconPath(storeDir: File, family: String): String {
 		val prefix = when {
 			family == "Material Icons" -> "baseline"

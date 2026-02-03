@@ -1,26 +1,33 @@
 package io.github.yzjdev.mdicon
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Bundle
+import android.os.Environment
 import android.os.Message
-import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.ArrayAdapter
 import android.widget.BaseAdapter
-import android.widget.Filter
+import android.widget.FrameLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.GridLayoutManager
+import com.caverock.androidsvg.SVG
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.gson.Gson
@@ -29,7 +36,11 @@ import com.hjq.permissions.permission.PermissionLists
 import io.github.yzjdev.mdicon.databinding.ActivityMainBinding
 import io.github.yzjdev.mdicon.databinding.DialogColorPickerBinding
 import io.github.yzjdev.mdicon.databinding.DialogIconEditBinding
+import io.github.yzjdev.utils.FileUtils
+import io.github.yzjdev.utils.XmlUtils
 import net.lingala.zip4j.ZipFile
+import net.margaritov.preference.colorpicker.AlphaPatternDrawable
+import net.margaritov.preference.colorpicker.ColorPickerPreference
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
@@ -42,6 +53,13 @@ class MainActivity : AppCompatActivity() {
 		const val MSG_UPDATE_PROGRESS = 2
 		const val MSG_DISMISS_PROGRESS = 3
 	}
+
+	private val defaultExportPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
+	val exportPath: String
+		get() = mmkv.getString("export_path", defaultExportPath)!!
+
+	val exportTypeId: Int
+		get() = mmkv.getInt("export_type_id", R.id.button1)
 
 	private val unzipExecutor = Executors.newSingleThreadExecutor()
 	private val searchExecutor = Executors.newSingleThreadExecutor()
@@ -66,8 +84,10 @@ class MainActivity : AppCompatActivity() {
 	val TAG = "aaa"
 	private lateinit var binding: ActivityMainBinding
 	lateinit var iconsMetadata: IconsMetadata
-	lateinit var adapter: IconAdapter
-	lateinit var filteredIcons: ArrayList<Icon>
+	val filteredIcons = ArrayList<Icon>()
+	lateinit var iconAdapter: IconAdapter
+
+
 	val storeDir: File
 		get() {
 			val f = File(App.instance.getExternalFilesDir(null), "icons/material")
@@ -101,109 +121,231 @@ class MainActivity : AppCompatActivity() {
 		setSupportActionBar(binding.toolbar)
 
 		updateEmptyState()
-		XXPermissions.with(this).permission(PermissionLists.getManageExternalStoragePermission()).request(null)
-		if (!iconsMetadataFile.exists()) {
-			createProgressDialog()
-			unzipExecutor.execute {
-				isWorking = true
-				var ok = false
-				try {
-					uiHandler.sendEmptyMessage(MSG_SHOW_PROGRESS)
-					unzip()
-					ok = true
-				} catch (e: Exception) {
-				} finally {
-					isWorking = false
-					uiHandler.sendEmptyMessage(MSG_DISMISS_PROGRESS)
-					if (ok) {
-						uiHandler.post {
-							updateEmptyState()
-							setupRecyclerView()
-						}
-					}
+
+
+		if (!isStoragePermissionGranted) {
+			MaterialAlertDialogBuilder(this).apply {
+				setTitle("提示")
+				setMessage("需要存储权限")
+				setPositiveButton("申请") { _, _ ->
+					requestStoragePermission()
 				}
+				setNegativeButton("取消", null)
+				show()
 			}
 			return
 		}
 
+		if (!iconsMetadataFile.exists()) {
+			load()
+			return
+		}
 
 		setupRecyclerView()
+	}
+
+	fun load() {
+		createProgressDialog()
+		unzipExecutor.execute {
+			isWorking = true
+			var ok = false
+			try {
+				uiHandler.sendEmptyMessage(MSG_SHOW_PROGRESS)
+				unzip()
+				ok = true
+			} catch (e: Exception) {
+			} finally {
+				isWorking = false
+				uiHandler.sendEmptyMessage(MSG_DISMISS_PROGRESS)
+				if (ok) {
+					uiHandler.post {
+						updateEmptyState()
+						setupRecyclerView()
+					}
+				}
+			}
+		}
+	}
+
+	fun requestStoragePermission() {
+		XXPermissions.with(this).permission(PermissionLists.getManageExternalStoragePermission()).request { _, deniedList ->
+			val allGranted = deniedList.isEmpty()
+			if (allGranted) {
+				if (!iconsMetadataFile.exists()) {
+					load()
+				} else {
+					setupRecyclerView()
+				}
+			}
+			updateEmptyState()
+		}
 	}
 
 	fun setupRecyclerView() {
 		val gson = Gson()
 		iconsMetadata = gson.fromJson(readString(iconsMetadataFile), IconsMetadata::class.java)
-
+		filteredIcons.clear()
+		filteredIcons.addAll(iconsMetadata.icons)
 		setupSpinner()
 		setupSpinner2()
-
-		adapter = IconAdapter(this, iconsMetadata.icons) { b, item, position ->
-			val file = File(item.getIconPath(storeDir, iconsMetadata.families[selectedFamily]))
+		iconAdapter = IconAdapter(this, filteredIcons) { b, item, position ->
+			val vectorPath = item.getIconPath(storeDir, iconsMetadata.families[selectedFamily])
 			b.name.text = item.name
-			b.icon.loadVectorDrawable(file)
+			b.icon.loadVectorDrawableFromPath(vectorPath)
 			b.root.setOnClickListener {
 				BottomSheetDialog(this).apply {
 					val b = DialogIconEditBinding.inflate(LayoutInflater.from(this@MainActivity))
 					setContentView(b.root)
 					setOnShowListener { _ ->
 						window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+						findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)?.apply {
+							BottomSheetBehavior.from(this).apply {
+								skipCollapsed = true
+								state = BottomSheetBehavior.STATE_EXPANDED
+							}
+						}
 					}
 					show()
-					handleEditDialog(b, item, file)
+					handleEditDialog(b, item, File(vectorPath))
 				}
 			}
 		}
 		binding.rv.layoutManager = GridLayoutManager(this, 4)
-		binding.rv.adapter = adapter
+		binding.rv.adapter = iconAdapter
 	}
 
 	fun handleEditDialog(b: DialogIconEditBinding, item: Icon, file: File) {
-		b.color.editText?.apply {
-			setOnClickListener {
-				MaterialAlertDialogBuilder(context).apply {
-					val b = DialogColorPickerBinding.inflate(LayoutInflater.from(context))
-					setTitle("颜色选择")
-					setView(b.root)
-					setPositiveButton("选择", null)
-					setNegativeButton("取消", null)
-					show()
+		b.buttonGroup.apply {
+			addOnButtonCheckedListener { group, checkedId, isChecked ->
+				if (isChecked && checkedId != exportTypeId) {
+					mmkv.putInt("export_type_id", checkedId)
 				}
 			}
+			check(exportTypeId)
 		}
+		b.preview.apply {
+			background = AlphaPatternDrawable(25)
+			XmlUtils.into(this, file)
+		}
+		b.exportPath.editText?.apply {
+			setText(exportPath)
+			setSelection(text.length)
+			doAfterTextChanged { text ->
+				mmkv.putString("export_path", text.toString())
+			}
+		}
+		b.name.editText?.setText(item.getName(iconsMetadata.families[selectedFamily]))
+		b.color.editText?.apply {
+			doAfterTextChanged { text ->
+				val color = text.toString()
+				val alpha = b.seekRight.text.toString()
+				b.preview.loadVectorDrawableFromString(XmlUtils.change(file, color, alpha))
+			}
+			setOnClickListener {
+				BottomSheetDialog(context).apply {
+					val colorPickerBinding = DialogColorPickerBinding.inflate(LayoutInflater.from(context), null, false)
+					setContentView(colorPickerBinding.root)
+					setOnShowListener {
+						val bottomSheet = findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+						bottomSheet?.let {
+							val behavior = BottomSheetBehavior.from(it)
+							behavior.isDraggable = false        // 关键：禁止下滑
+							behavior.state = BottomSheetBehavior.STATE_EXPANDED
+							behavior.skipCollapsed = true
+						}
+					}
+					show()
+					handleColorPickDialog(this, b, colorPickerBinding, text.toString().toColorInt())
+				}
+
+			}
+		}
+		b.seekAlpha.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+			override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+				val color = b.color.editText?.text.toString()
+				val alpha = "${progress / 100f}"
+				b.seekRight.text = alpha
+				b.preview.loadVectorDrawableFromString(XmlUtils.change(file, color, alpha))
+			}
+
+			override fun onStartTrackingTouch(seekBar: SeekBar?) {
+
+			}
+
+			override fun onStopTrackingTouch(seekBar: SeekBar?) {
+
+			}
+		})
+
+		b.confirm.setOnClickListener {
+			val typeId = b.buttonGroup.checkedButtonId
+			val suffix = when (typeId) {
+				R.id.button1 -> "xml"
+				R.id.button2 -> "svg"
+				R.id.button3 -> "png"
+				else -> "xml"
+			}
+			val exportDir = b.exportPath.editText?.text.toString()
+			val outFile = File(exportDir, b.name.editText?.text.toString() + "." + suffix)
+			val size = b.size.editText?.text.toString()
+			val color = b.color.editText?.text.toString()
+			val alpha = b.seekRight.text.toString()
+
+			var str = XmlUtils.change(file, size, size, color, alpha)
+			if (typeId == R.id.button2 || typeId == R.id.button3) {
+				str = XmlUtils.vd2svgFromString(str)
+			}
+			if (typeId != R.id.button3) {
+				FileUtils.writeString(outFile, str)
+			} else {
+				val svg = SVG.getFromString(str)
+				val bitmap = createBitmap(svg.documentWidth.toInt(), svg.documentHeight.toInt())
+				val canvas = Canvas(bitmap)
+				canvas.drawARGB(0, 0, 0, 0)
+				svg.renderToCanvas(canvas)
+				FileOutputStream(outFile).use {
+					bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+				}
+			}
+			"导出成功".toast(this)
+		}
+	}
+
+	fun handleColorPickDialog(dialog: BottomSheetDialog, iconEditBinding: DialogIconEditBinding, b: DialogColorPickerBinding, oldColor: Int) {
+		b.apply {
+			hexVal.text = ColorPickerPreference.convertToRGB(oldColor)
+			colorPickerView.color = oldColor
+			oldColorPanel.color = oldColor
+			newColorPanel.color = oldColor
+			colorPickerView.setOnColorChangedListener { color ->
+				hexVal.text = ColorPickerPreference.convertToRGB(color)
+				newColorPanel.color = color
+			}
+			cancel.setOnClickListener { dialog.dismiss() }
+			select.setOnClickListener {
+				val color = colorPickerView.color
+				iconEditBinding.color.editText?.setText(ColorPickerPreference.convertToRGB(color))
+				dialog.dismiss()
+			}
+		}
+
 	}
 
 	fun setupSpinner() {
 		val families = iconsMetadata.families.map { f ->
-			if (f == "Material Icons") {
-				return@map "Filled"
+			return@map if (f == "Material Icons") {
+				"Filled"
 			} else {
-				return@map f.replace("Material Icons", "").replace(" ", "").trim()
-			}
-		}
-		val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, families) {
-			override fun getFilter(): Filter {
-				return object : Filter() {
-					override fun performFiltering(constraint: CharSequence?): FilterResults {
-						return FilterResults().apply {
-							values = families
-							count = families.size
-						}
-					}
-
-					override fun publishResults(constraint: CharSequence?, results: FilterResults?) {
-						notifyDataSetChanged()
-					}
-
-				}
+				f.replace("Material Icons", "").replace(" ", "").trim()
 			}
 		}
 		binding.spinner.apply {
-			setAdapter(adapter)
+			setAdapter(NoFilterArrayAdapter(this@MainActivity, families))
 			setText(families[selectedFamily], false)
 			setOnItemClickListener { parent, view, position, id ->
 				val selectedItem = parent.getItemAtPosition(position) as String
 				selectedFamily = position
-				filter()
+				iconAdapter.notifyDataSetChanged()
 			}
 		}
 	}
@@ -213,29 +355,12 @@ class MainActivity : AppCompatActivity() {
 		val categories = iconsMetadata.categories.map { c ->
 			return@map "${c[0].uppercase()}${c.substring(1)}"
 		}
-		val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, categories) {
-			override fun getFilter(): Filter {
-				return object : Filter() {
-					override fun performFiltering(constraint: CharSequence?): FilterResults {
-						return FilterResults().apply {
-							values = categories
-							count = categories.size
-						}
-					}
-
-					override fun publishResults(constraint: CharSequence?, results: FilterResults?) {
-						notifyDataSetChanged()
-					}
-
-				}
-			}
-		}
 		binding.spinner2.apply {
-			setAdapter(adapter)
-			setText(categories[selectedFamily], false)
+			setAdapter(NoFilterArrayAdapter(this@MainActivity, categories))
+			setText(categories[selectedCategory], false)
 			setOnItemClickListener { parent, view, position, id ->
 				val selectedItem = parent.getItemAtPosition(position) as String
-				selectedFamily = position
+				selectedCategory = position
 				filter()
 			}
 		}
@@ -245,40 +370,23 @@ class MainActivity : AppCompatActivity() {
 	fun filter() {
 		searchExecutor.execute {
 			val searchText = searchView.query.toString().trim().lowercase()
-			val family = iconsMetadata.families[selectedFamily]
-			val category = iconsMetadata.categories[selectedCategory]
-			val isSearchEmpty = TextUtils.isEmpty(searchText)
-			val isAllFamily = "all" == family
-			val isAllCategory = "all" == category
-			val list = iconsMetadata.icons.filter { icon ->
-				if (!isAllFamily) {
-					if (icon.unsupportedFamilies.contains(family)) {
-						return@filter false
-					}
+			val category = iconsMetadata.categories[selectedCategory].lowercase()
+
+			val filteredList = iconsMetadata.icons.filter { icon ->
+				// 检查分类过滤（如果选择了"all"则不过滤分类）
+				val categoryMatch = category == "all" || icon.categories.any {
+					it.lowercase() == category
 				}
 
-				if (!isAllCategory) {
-					if (!icon.categories.contains(category)) return@filter false
-				}
+				// 检查搜索文本过滤（如果搜索文本为空则不过滤）
+				val searchMatch = searchText.isEmpty() || icon.name.lowercase().contains(searchText) || icon.tags.any { it.lowercase().contains(searchText) }
 
-				if (!isSearchEmpty) {
-					val nameMatch = icon.name.lowercase().contains(searchText)
-					var tagsMatch = false
-					if (!nameMatch) {
-						for (tag in icon.tags) {
-							if (tag.lowercase().contains(searchText)) {
-								tagsMatch = true
-								break
-							}
-						}
-					}
-
-					if (!nameMatch && !tagsMatch) return@filter false
-				}
-				return@filter true
+				// 同时满足分类和搜索条件
+				categoryMatch && searchMatch
 			}
+
 			uiHandler.post {
-				adapter.updateItems(list)
+				iconAdapter.updateItems(filteredList)
 			}
 		}
 	}
@@ -293,6 +401,7 @@ class MainActivity : AppCompatActivity() {
 	override fun onCreateOptionsMenu(menu: Menu?): Boolean {
 		menuInflater.inflate(R.menu.main_menu, menu)
 		val searchItem = menu?.findItem(R.id.action_search)
+		searchItem?.isVisible = XXPermissions.isGrantedPermission(this, PermissionLists.getManageExternalStoragePermission())
 		searchView = searchItem?.actionView as SearchView
 		searchView.queryHint = "搜索图标..."
 		searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
@@ -311,10 +420,25 @@ class MainActivity : AppCompatActivity() {
 
 	override fun onOptionsItemSelected(item: MenuItem): Boolean {
 		when (item.itemId) {
-			R.id.action_help -> {}
+			R.id.action_help -> {
+				if (!isStoragePermissionGranted) {
+					MaterialAlertDialogBuilder(this).apply {
+						setTitle("提示")
+						setMessage("需要存储权限")
+						setPositiveButton("申请") { _, _ ->
+							requestStoragePermission()
+						}
+						setNegativeButton("取消", null)
+						show()
+					}
+				}
+			}
 		}
 		return super.onOptionsItemSelected(item)
 	}
+
+	val isStoragePermissionGranted: Boolean
+		get() = XXPermissions.isGrantedPermission(this, PermissionLists.getManageExternalStoragePermission())
 
 
 	fun createProgressDialog() {
@@ -339,7 +463,7 @@ class MainActivity : AppCompatActivity() {
 	}
 
 	fun updateEmptyState() {
-		val empty = !iconsMetadataFile.exists()
+		val empty = !iconsMetadataFile.exists() || !isStoragePermissionGranted
 		binding.emptyContainer.visibility = if (empty) View.VISIBLE else View.GONE
 		binding.mainContainer.visibility = if (empty) View.GONE else View.VISIBLE
 	}
@@ -347,8 +471,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 class SimpleStringAdapter(
-	context: Context,
-	private val data: List<String>
+	context: Context, private val data: List<String>
 ) : BaseAdapter() {
 
 	private val inflater = LayoutInflater.from(context)
@@ -359,9 +482,7 @@ class SimpleStringAdapter(
 
 	override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
 		val view = convertView ?: inflater.inflate(
-			android.R.layout.simple_spinner_dropdown_item,
-			parent,
-			false
+			android.R.layout.simple_spinner_dropdown_item, parent, false
 		)
 		(view as TextView).text = data[position]
 		return view
