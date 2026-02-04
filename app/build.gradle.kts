@@ -51,8 +51,9 @@ android {
 
 dependencies {
 	implementation(project(":utils"))
+	implementation("com.google.code.gson:gson:2.13.2")
 	implementation("com.tencent:mmkv:2.3.0")
-
+	implementation("org.xutils:xutils:3.9.0")
 	// 颜色选择控件
 	api("net.margaritov.preference.colorpicker.ColorPickerPreference:ColorPickerPreference:1.0.0")
 

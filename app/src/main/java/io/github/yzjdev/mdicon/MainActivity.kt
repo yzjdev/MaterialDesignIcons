@@ -1,6 +1,7 @@
 package io.github.yzjdev.mdicon
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
@@ -33,9 +34,15 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.gson.Gson
 import com.hjq.permissions.XXPermissions
 import com.hjq.permissions.permission.PermissionLists
+import io.github.yzjdev.mdicon.adapter.IconAdapter
+import io.github.yzjdev.mdicon.adapter.NoFilterArrayAdapter
 import io.github.yzjdev.mdicon.databinding.ActivityMainBinding
 import io.github.yzjdev.mdicon.databinding.DialogColorPickerBinding
 import io.github.yzjdev.mdicon.databinding.DialogIconEditBinding
+import io.github.yzjdev.mdicon.exts.loadVectorDrawableFromPath
+import io.github.yzjdev.mdicon.exts.loadVectorDrawableFromString
+import io.github.yzjdev.mdicon.model.Icon
+import io.github.yzjdev.mdicon.model.IconsMetadata
 import io.github.yzjdev.utils.FileUtils
 import io.github.yzjdev.utils.XmlUtils
 import net.lingala.zip4j.ZipFile
@@ -112,7 +119,7 @@ class MainActivity : AppCompatActivity() {
 		enableEdgeToEdge()
 		binding = ActivityMainBinding.inflate(layoutInflater)
 		setContentView(binding.root)
-		ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+		ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
 			val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
 			v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
 			insets
@@ -433,6 +440,8 @@ class MainActivity : AppCompatActivity() {
 					}
 				}
 			}
+
+			R.id.action_al_iconfont -> startActivity(Intent(this, IconFontActivity::class.java))
 		}
 		return super.onOptionsItemSelected(item)
 	}

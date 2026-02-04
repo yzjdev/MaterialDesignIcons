@@ -1,4 +1,4 @@
-package io.github.yzjdev.mdicon
+package io.github.yzjdev.mdicon.exts
 
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.PictureDrawable
@@ -33,5 +33,11 @@ fun ImageView.loadVectorDrawable(input: InputStream) {
 fun ImageView.loadVectorDrawable(drawable: Drawable) {
 	setLayerType(View.LAYER_TYPE_SOFTWARE, null)
 	setImageDrawable(drawable)
+}
+
+fun ImageView.loadSvgFromString(svgString: String) {
+	val svg = SVG.getFromString(svgString)
+	val pic = svg.renderToPicture()
+	loadVectorDrawable(PictureDrawable(pic))
 }
 

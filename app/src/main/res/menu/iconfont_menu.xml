@@ -3,21 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_search"
+        android:id="@+id/search"
         android:title="搜索"
         android:icon="@drawable/outline_search_24"
         app:showAsAction="always|collapseActionView"
         app:actionViewClass="androidx.appcompat.widget.SearchView" />
 
     <item
-        android:id="@+id/action_help"
-        android:title="帮助"
-        android:icon="@drawable/outline_help_outline_24"
+        android:id="@+id/refresh"
+        android:title="刷新"
+        android:icon="@drawable/round_refresh_24"
         app:showAsAction="always" />
 
-    <item
-        android:id="@+id/action_al_iconfont"
-        android:title="阿里巴巴图标库"
-        android:icon="@drawable/round_draw_24"
-        app:showAsAction="always" />
 </menu>

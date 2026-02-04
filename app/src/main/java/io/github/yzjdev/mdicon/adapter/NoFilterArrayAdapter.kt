@@ -1,5 +1,6 @@
-package io.github.yzjdev.mdicon
+package io.github.yzjdev.mdicon.adapter
 
+import android.R
 import android.content.Context
 import android.widget.ArrayAdapter
 import android.widget.Filter
@@ -8,7 +9,7 @@ class NoFilterArrayAdapter<T>(
 	context: Context, resource: Int, private val items: List<T>
 ) : ArrayAdapter<T>(context, resource, items) {
 
-	constructor(context: Context, items: List<T>) : this(context, android.R.layout.simple_spinner_dropdown_item, items)
+	constructor(context: Context, items: List<T>) : this(context, R.layout.simple_spinner_dropdown_item, items)
 
 	override fun getFilter(): Filter {
 		return NoFilter()

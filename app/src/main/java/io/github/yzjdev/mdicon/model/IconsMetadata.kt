@@ -1,4 +1,4 @@
-package io.github.yzjdev.mdicon
+package io.github.yzjdev.mdicon.model
 
 import com.google.gson.annotations.SerializedName
 import java.io.File
